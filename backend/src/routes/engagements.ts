@@ -1,0 +1,274 @@
+import { Router } from "express";
+import { z } from "zod";
+import { requireAuth } from "../middleware/auth";
+import { withTenant, resolveEngagementRole } from "../middleware/tenantContext";
+import { appendAuditEvent, verifyAuditChain } from "../auditTrail";
+
+export const engagementsRouter = Router();
+engagementsRouter.use(requireAuth);
+
+// ---------- GET /v1/engagements ----------
+// No firm_id query param — scope comes only from the token (RLS enforces
+// it too, but keeping it out of the query surface avoids anyone building
+// a client that tries to pass one).
+engagementsRouter.get(
+  "/v1/engagements",
+  withTenant(async (req, res, client) => {
+    const fy = typeof req.query.fy === "string" ? req.query.fy : null;
+    const rows = await client.query(
+      `SELECT id, name, ticker, entity_type, fiscal_period, chains, coverage_pct, risk_score, created_at, updated_at
+       FROM engagements
+       WHERE ($1::text IS NULL OR fiscal_period = $1)
+       ORDER BY created_at DESC`,
+      [fy]
+    );
+    res.json({ data: rows.rows, page: { cursor: null, has_more: false } });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id",
+  withTenant(async (req, res, client) => {
+    const result = await client.query(`SELECT * FROM engagements WHERE id = $1`, [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ error: "not found" });
+    res.json({ data: result.rows[0] });
+  })
+);
+
+// ---------- Findings ----------
+engagementsRouter.get(
+  "/v1/engagements/:id/findings",
+  withTenant(async (req, res, client) => {
+    const { status, severity, assertion, category } = req.query;
+    const rows = await client.query(
+      `SELECT * FROM findings
+       WHERE engagement_id = $1
+         AND ($2::text IS NULL OR status = $2)
+         AND ($3::text IS NULL OR severity = ANY(string_to_array($3, ',')))
+         AND ($4::text IS NULL OR assertion = $4)
+         AND ($5::text IS NULL OR category = $5)
+       ORDER BY detected_at DESC`,
+      [req.params.id, status ?? null, severity ?? null, assertion ?? null, category ?? null]
+    );
+    res.json({ data: rows.rows, page: { cursor: null, has_more: false } });
+  })
+);
+
+const createFindingBody = z.object({
+  id: z.string(),
+  title: z.string(),
+  category: z.string().optional(),
+  assertion: z.enum([
+    "existence", "completeness", "rights_obligations", "valuation", "presentation", "cutoff", "classification",
+  ]),
+  impact: z.number().int().min(1).max(5),
+  likelihood: z.number().int().min(1).max(5),
+  description: z.string().optional(),
+  address_id: z.string().uuid().optional(),
+  tx_hash: z.string().optional(),
+});
+
+function severityOf(impact: number, likelihood: number): string {
+  const s = impact * likelihood;
+  if (s >= 20) return "critical";
+  if (s >= 12) return "high";
+  if (s >= 6) return "medium";
+  if (s >= 3) return "low";
+  return "info";
+}
+
+engagementsRouter.post(
+  "/v1/engagements/:id/findings",
+  withTenant(async (req, res, client) => {
+    const engagementId = req.params.id;
+    const role = await resolveEngagementRole(client, req.tenant!, engagementId);
+    if (role === "client_viewer") return res.status(403).json({ error: "read-only role" });
+
+    const body = createFindingBody.parse(req.body);
+    const severity = severityOf(body.impact, body.likelihood);
+
+    const firmRow = await client.query<{ firm_id: string }>(`SELECT firm_id FROM engagements WHERE id = $1`, [engagementId]);
+    if (!firmRow.rowCount) return res.status(404).json({ error: "engagement not found" });
+    const firmId = firmRow.rows[0].firm_id;
+
+    const inserted = await client.query(
+      `INSERT INTO findings (id, engagement_id, firm_id, title, category, assertion, impact, likelihood, severity, description, address_id, tx_hash, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')
+       RETURNING *`,
+      [body.id, engagementId, firmId, body.title, body.category ?? null, body.assertion, body.impact, body.likelihood, severity, body.description ?? null, body.address_id ?? null, body.tx_hash ?? null]
+    );
+
+    await appendAuditEvent(client, {
+      engagementId,
+      firmId,
+      actorId: req.tenant!.userId,
+      action: "Finding opened",
+      targetType: "finding",
+      targetId: body.id,
+      status: "open",
+    });
+
+    res.status(201).json({ data: inserted.rows[0] });
+  })
+);
+
+// ---------- Audit trail ----------
+engagementsRouter.get(
+  "/v1/engagements/:id/audit-trail",
+  withTenant(async (req, res, client) => {
+    const { since, type, actor_id } = req.query;
+    const rows = await client.query(
+      `SELECT * FROM audit_trail
+       WHERE engagement_id = $1
+         AND ($2::bigint IS NULL OR id > $2::bigint)
+         AND ($3::text IS NULL OR target_type = $3)
+         AND ($4::uuid IS NULL OR actor_id = $4::uuid)
+       ORDER BY id ASC
+       LIMIT 200`,
+      [req.params.id, since ?? null, type ?? null, actor_id ?? null]
+    );
+    const last = rows.rows[rows.rows.length - 1];
+    res.json({ data: rows.rows, page: { cursor: last ? String(last.id) : null, has_more: rows.rows.length === 200 } });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id/audit-trail/verify",
+  withTenant(async (req, res, client) => {
+    const result = await verifyAuditChain(client, req.params.id);
+    res.json(result);
+  })
+);
+
+// ---------- Sign-offs ----------
+engagementsRouter.get(
+  "/v1/engagements/:id/sign-offs",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM sign_offs WHERE engagement_id = $1 ORDER BY assertion`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+// ---------- Tokens / contracts / governance / tokenomics / validators ----------
+engagementsRouter.get(
+  "/v1/engagements/:id/tokens",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM token_holdings WHERE engagement_id = $1`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id/contracts",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM contract_profiles WHERE engagement_id = $1`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id/governance",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM governance_actions WHERE engagement_id = $1 ORDER BY occurred_at DESC`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id/tokenomics",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM tokenomics_events WHERE engagement_id = $1`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id/validators",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM validators WHERE engagement_id = $1`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+// Not a modeled table (no dedicated cross-chain-balance entity in §2) —
+// derived from wallets_contracts grouped by chain. Reconciliation deltas
+// need an on-chain balance feed this schema doesn't wire up yet.
+engagementsRouter.get(
+  "/v1/engagements/:id/cross-chain",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(
+      `SELECT chain, count(*) AS wallet_count, count(*) FILTER (WHERE kind = 'contract') AS contract_count
+       FROM wallets_contracts
+       WHERE engagement_id = $1
+       GROUP BY chain`,
+      [req.params.id]
+    );
+    res.json({ data: rows.rows, note: "derived from wallets_contracts; no balance reconciliation feed wired up" });
+  })
+);
+
+// ---------- Alerts ----------
+engagementsRouter.get(
+  "/v1/engagements/:id/alert-rules",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(`SELECT * FROM alert_rules WHERE engagement_id = $1 ORDER BY created_at`, [req.params.id]);
+    res.json({ data: rows.rows });
+  })
+);
+
+const createAlertRuleBody = z.object({
+  name: z.string(),
+  condition: z.string(),
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  threshold: z.number().default(0),
+  notify: z.string().optional(),
+});
+
+engagementsRouter.post(
+  "/v1/engagements/:id/alert-rules",
+  withTenant(async (req, res, client) => {
+    const body = createAlertRuleBody.parse(req.body);
+    const firmRow = await client.query<{ firm_id: string }>(`SELECT firm_id FROM engagements WHERE id = $1`, [req.params.id]);
+    if (!firmRow.rowCount) return res.status(404).json({ error: "engagement not found" });
+
+    const inserted = await client.query(
+      `INSERT INTO alert_rules (engagement_id, firm_id, name, condition, severity, threshold, channel)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.params.id, firmRow.rows[0].firm_id, body.name, body.condition, body.severity, body.threshold, body.notify ?? null]
+    );
+    res.status(201).json({ data: inserted.rows[0] });
+  })
+);
+
+engagementsRouter.get(
+  "/v1/engagements/:id/alerts",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(
+      `SELECT * FROM alert_instances WHERE engagement_id = $1 ORDER BY triggered_at DESC LIMIT 100`,
+      [req.params.id]
+    );
+    res.json({ data: rows.rows, page: { cursor: null, has_more: rows.rows.length === 100 } });
+  })
+);
+
+// ---------- Live feed (SSE) ----------
+// Real-time tx streaming needs the worker's RPC subscription wired to a
+// pub/sub channel this handler relays — that infra isn't built here.
+// This proves the endpoint shape (headers, connection lifecycle) without
+// faking chain data.
+engagementsRouter.get("/v1/engagements/:id/feed/stream", requireAuth, (req, res) => {
+  res.writeHead(501, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(`event: error\ndata: ${JSON.stringify({ error: "feed streaming not implemented — needs worker RPC subscription" })}\n\n`);
+  res.end();
+});
+
+// ---------- NLQ ----------
+// Resolving a question to structured queries + citations against an LLM
+// is a separate integration this migration doesn't build.
+engagementsRouter.post("/v1/engagements/:id/nlq", requireAuth, (_req, res) => {
+  res.status(501).json({ error: "nlq resolver not implemented" });
+});
