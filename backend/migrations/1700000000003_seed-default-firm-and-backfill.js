@@ -11,7 +11,6 @@
 const ENGAGEMENT_JOIN_TABLES = [
   'wallets_contracts',
   'findings',
-  'evidence',
   'audit_trail',
   'sign_offs',
   'token_holdings',
@@ -50,6 +49,17 @@ exports.up = (pgm) => {
     `);
   }
 
+  // evidence has no engagement_id of its own — it reaches its firm through
+  // findings (finding_id -> findings.engagement_id), not directly. Must run
+  // after findings above, since it depends on findings.firm_id being set.
+  pgm.sql(`
+    UPDATE evidence AS t
+    SET firm_id = f.firm_id
+    FROM findings AS f
+    WHERE t.finding_id = f.id
+      AND t.firm_id IS NULL;
+  `);
+
   // query_library has no engagement_id — it's a firm-owned procedure
   // library, so seed it onto the default firm directly.
   pgm.sql(`
@@ -83,6 +93,7 @@ exports.down = (pgm) => {
   // system, since that state was the bug being fixed.
   pgm.sql(`UPDATE query_executions SET firm_id = NULL WHERE firm_id = '00000000-0000-0000-0000-000000000001';`);
   pgm.sql(`UPDATE query_library SET firm_id = NULL WHERE firm_id = '00000000-0000-0000-0000-000000000001';`);
+  pgm.sql(`UPDATE evidence SET firm_id = NULL WHERE firm_id = '00000000-0000-0000-0000-000000000001';`);
   for (const table of ENGAGEMENT_JOIN_TABLES.slice().reverse()) {
     pgm.sql(`UPDATE ${table} SET firm_id = NULL WHERE firm_id = '00000000-0000-0000-0000-000000000001';`);
   }
