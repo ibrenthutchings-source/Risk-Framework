@@ -1,0 +1,154 @@
+/* styles_audit.css — audit trail, sign-offs, evidence, governance, cross-chain, upgrades, period comparison */
+
+/* ---------- Stat delta chip ---------- */
+.stat-delta{font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;margin-left:8px;vertical-align:middle}
+.stat-delta.up{color:#1a9d5e;background:rgba(26,157,94,.12)}
+.stat-delta.dn{color:#dc3545;background:rgba(220,53,69,.12)}
+
+/* ---------- Audit Trail Timeline ---------- */
+.trail-list{padding:10px 16px 16px;display:flex;flex-direction:column}
+.trail-row{display:flex;gap:14px;min-height:58px}
+.trail-line{display:flex;flex-direction:column;align-items:center;flex:0 0 18px;padding-top:3px}
+.trail-dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+.trail-stem{width:2px;flex:1;background:var(--line);margin-top:4px}
+.trail-body{flex:1;padding-bottom:18px}
+.trail-top{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.trail-action{font-size:13.5px;font-weight:600}
+.trail-target{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.trail-actor{font-size:12px}
+.trail-ts{font-size:11px}
+
+/* ---------- Sign-off matrix ---------- */
+.signoff-list{padding:10px 14px 14px;display:flex;flex-direction:column;gap:6px}
+.signoff-row{padding:12px;border-radius:9px;border:1px solid var(--line);transition:.12s}
+.signoff-row.approved{border-color:rgba(26,157,94,.22);background:rgba(26,157,94,.04)}
+.signoff-row.in-review{border-color:rgba(255,122,69,.22);background:rgba(255,122,69,.04)}
+.signoff-top{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.signoff-assertion{font-size:13.5px;font-weight:600;flex:1}
+.signoff-meta{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.signoff-av{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-size:9.5px;font-weight:700;color:var(--muted);flex:0 0 auto}
+.signoff-reviewer{font-size:12px}
+.signoff-date{margin-left:auto}
+.signoff-note{font-size:11.5px;line-height:1.45}
+
+/* ---------- Evidence linking ---------- */
+.evidence-sec{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.evidence-head{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.evidence-items{display:flex;flex-direction:column;gap:7px}
+.evidence-item{padding:9px 11px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-size:12px}
+.evidence-item-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.evidence-item-top .mono{font-size:11.5px}
+.evidence-desc{color:var(--muted);font-size:11.5px;line-height:1.4}
+.evidence-count{font-size:11px;padding:2px 7px;border-radius:5px;background:rgba(139,124,240,.12);color:#8b7cf0;font-weight:600;margin-left:auto}
+
+/* ---------- Period comparison ---------- */
+.cmp-toggle{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.cmp-toggle button{font-size:11.5px;padding:5px 11px;border-radius:7px;background:var(--bg);border:1px solid var(--line);color:var(--muted);transition:.12s;font-weight:500}
+.cmp-toggle button.on{background:color-mix(in oklab,var(--accent) 14%,transparent);color:var(--accent);border-color:color-mix(in oklab,var(--accent) 35%,transparent)}
+.assert-q3-bar{height:6px;border-radius:20px;background:rgba(0,0,0,.06);overflow:hidden;margin-top:5px}
+.assert-q3-bar>div{height:100%;border-radius:20px;opacity:.45}
+
+/* ---------- Governance ---------- */
+.gov-active{padding:14px;display:flex;flex-direction:column;gap:14px}
+.gov-proposal{padding:16px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.gov-prop-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.gov-prop-id{font-size:11px;color:var(--dim)}
+.gov-prop-title{font-size:14px;font-weight:600;flex:1;min-width:0}
+.gov-impact{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.gov-votes{margin-bottom:10px}
+.gov-vote-bar{height:10px;border-radius:8px;background:rgba(220,53,69,.14);overflow:hidden}
+.gov-vote-bar .gov-for{height:100%;background:#1a9d5e;border-radius:8px;transition:width .5s ease}
+.gov-vote-labels{display:flex;justify-content:space-between;font-size:11.5px;font-weight:600;margin-top:6px}
+.gov-quorum{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px}
+.gov-quorum-bar{flex:1;height:5px;border-radius:5px;background:rgba(0,0,0,.06);overflow:hidden}
+.gov-quorum-bar>div{height:100%;background:var(--accent);border-radius:5px;transition:width .5s ease}
+.gov-prop-meta{font-size:11px;margin-top:2px}
+.gov-log{overflow-x:auto}
+.gov-th,.gov-tr{display:grid;grid-template-columns:66px 100px 1fr 80px 130px 82px 90px;gap:12px;align-items:center;padding:10px 16px}
+.gov-th{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);border-bottom:1px solid var(--line)}
+.gov-tr{border-bottom:1px solid var(--line);font-size:13px;transition:.12s}
+.gov-tr:hover{background:var(--panel-2)}
+.gov-title{font-weight:500;min-width:0}
+.gov-impact-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px}
+
+/* ---------- Cross-chain reconciliation ---------- */
+.xchain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px}
+.xchain-card{padding:14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);position:relative}
+.xchain-card.ok{border-color:rgba(26,157,94,.25)}
+.xchain-card.err{border-color:rgba(220,53,69,.3);background:rgba(220,53,69,.04)}
+.xchain-name{font-size:15px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:8px}
+.xchain-bal{font-size:20px;font-weight:700;font-family:var(--mono);margin:8px 0 6px}
+.xchain-meta{font-size:11px;color:var(--dim);display:flex;gap:12px}
+.xchain-status{position:absolute;top:14px;right:14px}
+.xchain-delta{font-size:12px;font-weight:600;margin-top:6px}
+.bridge-rows{padding:10px 16px;display:flex;flex-direction:column;gap:8px}
+.bridge-row{display:flex;align-items:center;gap:10px;font-size:12.5px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.bridge-amt{margin-left:auto;font-weight:600;font-family:var(--mono)}
+.bridge-txn{font-size:10.5px;color:var(--dim)}
+
+/* ---------- Contract upgrades ---------- */
+.upg-list{padding:12px 16px;display:flex;flex-direction:column;gap:9px}
+.upg-card{padding:13px;border-radius:10px;border:1px solid var(--line);background:var(--bg);transition:.12s}
+.upg-card:hover{border-color:color-mix(in oklab,var(--accent) 30%,transparent)}
+.upg-card.risk-critical{border-color:rgba(220,53,69,.35);background:rgba(220,53,69,.04)}
+.upg-card.risk-high{border-color:rgba(255,122,69,.25)}
+.upg-head{display:flex;align-items:center;gap:9px;margin-bottom:6px;flex-wrap:wrap}
+.upg-contract{font-size:14px;font-weight:600}
+.upg-type{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:5px;font-weight:700}
+.upg-impl{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px}
+.upg-impl .mono{font-size:11.5px;color:var(--muted)}
+.upg-diff{font-size:12px;font-family:var(--mono);color:#0e7c6b;padding:6px 9px;background:rgba(14,124,107,.06);border-radius:6px;margin-bottom:6px}
+.upg-foot{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim)}
+
+/* ---------- Dune Analytics MCP ---------- */
+.dune-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,rgba(217,148,14,.06),rgba(217,148,14,.02))}
+.dune-header-l{display:flex;align-items:center;gap:11px}
+.dune-logo{width:34px;height:34px;border-radius:9px;background:rgba(217,148,14,.12);display:grid;place-items:center;flex:0 0 auto}
+.dune-header-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.dune-mcp-badge{font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:4px;background:rgba(217,148,14,.18);color:#d9940e;text-transform:uppercase}
+.dune-header-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.dune-header-r{display:flex;align-items:center;gap:14px}
+.dune-credit-meter{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.dune-credit-bar{width:80px;height:4px;border-radius:4px;background:rgba(0,0,0,.05);overflow:hidden}
+.dune-credit-bar>div{height:100%;background:#d9940e;border-radius:4px}
+.dune-conn-dot{width:9px;height:9px;border-radius:50%;background:#1a9d5e;box-shadow:0 0 6px rgba(26,157,94,.5);animation:pulse-dot 2s ease infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.5}}
+
+.dune-config{padding:10px 16px;border-bottom:1px solid var(--line)}
+.dune-config-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.dune-input{flex:1;background:#f0f2f5;border:1px solid var(--line);border-radius:7px;padding:7px 10px;color:var(--txt);font-size:12px}
+.dune-input:focus{outline:none;border-color:color-mix(in oklab,var(--accent) 50%,transparent)}
+.dune-queries{display:flex;gap:8px;padding:14px 16px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.dune-q{text-align:left;padding:10px 13px;border-radius:9px;border:1px solid var(--line);background:var(--bg);transition:.12s;min-width:170px;flex:0 0 auto}
+.dune-q:hover{border-color:color-mix(in oklab,#d9940e 30%,transparent)}
+.dune-q.on{border-color:#d9940e;background:rgba(217,148,14,.06)}
+.dune-q-name{font-size:12px;font-weight:600;margin-bottom:5px;line-height:1.3}
+.dune-q-meta{display:flex;align-items:center;gap:8px;font-size:10.5px}
+.dune-exec{padding:16px}
+.dune-exec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+.dune-exec-title{font-size:15px;font-weight:600;margin-bottom:3px}
+.dune-exec-right{display:flex;align-items:center;gap:12px;flex:0 0 auto}
+.dune-status{font-size:12px;font-weight:600;white-space:nowrap}
+.dune-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.dune-tab{font-size:11.5px;padding:5px 12px;border-radius:6px;background:transparent;border:1px solid transparent;color:var(--muted);font-weight:600;transition:.12s}
+.dune-tab:hover{color:var(--txt)}
+.dune-tab.on{background:#f0f2f5;border-color:var(--line);color:var(--txt)}
+.dune-log-toggle{font-size:11px;padding:4px 10px;border-radius:6px;background:transparent;border:1px solid transparent;color:var(--dim);display:flex;align-items:center;gap:5px;margin-left:auto;transition:.12s}
+.dune-log-toggle.on{background:rgba(14,124,107,.06);color:#0e7c6b;border-color:rgba(14,124,107,.2)}
+.dune-exec-meta{margin-left:8px;font-size:10.5px}
+.dune-sql-wrap{background:#f6f8fb;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.dune-sql{padding:14px 16px;font-size:12px;line-height:1.55;color:#4d5b6e;white-space:pre-wrap;word-break:break-all;margin:0}
+.dune-results{margin-top:4px}
+.dune-results-head{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:8px}
+.dune-row-risk{background:rgba(220,53,69,.06)}
+.dune-row-risk td{color:#c44}
+.dune-loading{display:flex;align-items:center;gap:14px;padding:32px 0;justify-content:center;color:var(--muted);font-size:13px}
+.dune-spinner{width:20px;height:20px;border:2.5px solid var(--line);border-top-color:#d9940e;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.dune-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:36px 0;color:var(--muted);font-size:13px;text-align:center}
+.dune-empty svg{color:var(--dim)}
+.dune-log{background:#f6f8fb;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:160px;overflow-y:auto;margin-top:12px;font-size:11.5px;line-height:1.6}
+.dune-log-line{display:flex;gap:10px;color:var(--muted)}
+.dune-log-line.mcp{color:#d9940e}
+.dune-log-line.err{color:#dc3545}
+.dune-log-ts{color:var(--dim);flex:0 0 18px;text-align:right}
