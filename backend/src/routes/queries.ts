@@ -9,7 +9,7 @@ export const queriesRouter = Router();
 queriesRouter.use(requireAuth);
 
 queriesRouter.get(
-  "/v1/queries",
+  "/queries",
   withTenant(async (_req, res, client) => {
     const rows = await client.query(`SELECT * FROM query_library ORDER BY name`);
     res.json({ data: rows.rows });
@@ -24,7 +24,7 @@ const executeBody = z.object({
 // Server-side proxy to Dune — the API key lives only in worker env vars,
 // never in this response or in any client bundle.
 queriesRouter.post(
-  "/v1/queries/:id/execute",
+  "/queries/:id/execute",
   withTenant(async (req, res, client) => {
     const query = await client.query<{ id: string; firm_id: string }>(
       `SELECT id, firm_id FROM query_library WHERE id = $1`,
@@ -57,7 +57,7 @@ queriesRouter.post(
 // through to query_executions; caching is a worker/infra concern, not
 // modeled in this route.
 queriesRouter.get(
-  "/v1/executions/:execution_id",
+  "/executions/:execution_id",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM query_executions WHERE id = $1`, [req.params.execution_id]);
     if (!rows.rowCount) return res.status(404).json({ error: "not found" });

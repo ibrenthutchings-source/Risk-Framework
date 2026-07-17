@@ -7,12 +7,12 @@ import { appendAuditEvent, verifyAuditChain } from "../auditTrail";
 export const engagementsRouter = Router();
 engagementsRouter.use(requireAuth);
 
-// ---------- GET /v1/engagements ----------
+// ---------- GET /engagements ----------
 // No firm_id query param — scope comes only from the token (RLS enforces
 // it too, but keeping it out of the query surface avoids anyone building
 // a client that tries to pass one).
 engagementsRouter.get(
-  "/v1/engagements",
+  "/engagements",
   withTenant(async (req, res, client) => {
     const fy = typeof req.query.fy === "string" ? req.query.fy : null;
     const rows = await client.query(
@@ -27,7 +27,7 @@ engagementsRouter.get(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id",
+  "/engagements/:id",
   withTenant(async (req, res, client) => {
     const result = await client.query(`SELECT * FROM engagements WHERE id = $1`, [req.params.id]);
     if (!result.rowCount) return res.status(404).json({ error: "not found" });
@@ -37,7 +37,7 @@ engagementsRouter.get(
 
 // ---------- Findings ----------
 engagementsRouter.get(
-  "/v1/engagements/:id/findings",
+  "/engagements/:id/findings",
   withTenant(async (req, res, client) => {
     const { status, severity, assertion, category } = req.query;
     const rows = await client.query(
@@ -78,7 +78,7 @@ function severityOf(impact: number, likelihood: number): string {
 }
 
 engagementsRouter.post(
-  "/v1/engagements/:id/findings",
+  "/engagements/:id/findings",
   withTenant(async (req, res, client) => {
     const engagementId = req.params.id;
     const role = await resolveEngagementRole(client, req.tenant!, engagementId);
@@ -114,7 +114,7 @@ engagementsRouter.post(
 
 // ---------- Audit trail ----------
 engagementsRouter.get(
-  "/v1/engagements/:id/audit-trail",
+  "/engagements/:id/audit-trail",
   withTenant(async (req, res, client) => {
     const { since, type, actor_id } = req.query;
     const rows = await client.query(
@@ -133,7 +133,7 @@ engagementsRouter.get(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id/audit-trail/verify",
+  "/engagements/:id/audit-trail/verify",
   withTenant(async (req, res, client) => {
     const result = await verifyAuditChain(client, req.params.id);
     res.json(result);
@@ -142,7 +142,7 @@ engagementsRouter.get(
 
 // ---------- Sign-offs ----------
 engagementsRouter.get(
-  "/v1/engagements/:id/sign-offs",
+  "/engagements/:id/sign-offs",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM sign_offs WHERE engagement_id = $1 ORDER BY assertion`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -151,7 +151,7 @@ engagementsRouter.get(
 
 // ---------- Tokens / contracts / governance / tokenomics / validators ----------
 engagementsRouter.get(
-  "/v1/engagements/:id/tokens",
+  "/engagements/:id/tokens",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM token_holdings WHERE engagement_id = $1`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -159,7 +159,7 @@ engagementsRouter.get(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id/contracts",
+  "/engagements/:id/contracts",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM contract_profiles WHERE engagement_id = $1`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -167,7 +167,7 @@ engagementsRouter.get(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id/governance",
+  "/engagements/:id/governance",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM governance_actions WHERE engagement_id = $1 ORDER BY occurred_at DESC`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -175,7 +175,7 @@ engagementsRouter.get(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id/tokenomics",
+  "/engagements/:id/tokenomics",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM tokenomics_events WHERE engagement_id = $1`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -183,7 +183,7 @@ engagementsRouter.get(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id/validators",
+  "/engagements/:id/validators",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM validators WHERE engagement_id = $1`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -194,7 +194,7 @@ engagementsRouter.get(
 // derived from wallets_contracts grouped by chain. Reconciliation deltas
 // need an on-chain balance feed this schema doesn't wire up yet.
 engagementsRouter.get(
-  "/v1/engagements/:id/cross-chain",
+  "/engagements/:id/cross-chain",
   withTenant(async (req, res, client) => {
     const rows = await client.query(
       `SELECT chain, count(*) AS wallet_count, count(*) FILTER (WHERE kind = 'contract') AS contract_count
@@ -209,7 +209,7 @@ engagementsRouter.get(
 
 // ---------- Alerts ----------
 engagementsRouter.get(
-  "/v1/engagements/:id/alert-rules",
+  "/engagements/:id/alert-rules",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM alert_rules WHERE engagement_id = $1 ORDER BY created_at`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -225,7 +225,7 @@ const createAlertRuleBody = z.object({
 });
 
 engagementsRouter.post(
-  "/v1/engagements/:id/alert-rules",
+  "/engagements/:id/alert-rules",
   withTenant(async (req, res, client) => {
     const body = createAlertRuleBody.parse(req.body);
     const firmRow = await client.query<{ firm_id: string }>(`SELECT firm_id FROM engagements WHERE id = $1`, [req.params.id]);
@@ -241,7 +241,7 @@ engagementsRouter.post(
 );
 
 engagementsRouter.get(
-  "/v1/engagements/:id/alerts",
+  "/engagements/:id/alerts",
   withTenant(async (req, res, client) => {
     const rows = await client.query(
       `SELECT * FROM alert_instances WHERE engagement_id = $1 ORDER BY triggered_at DESC LIMIT 100`,
@@ -256,7 +256,7 @@ engagementsRouter.get(
 // pub/sub channel this handler relays — that infra isn't built here.
 // This proves the endpoint shape (headers, connection lifecycle) without
 // faking chain data.
-engagementsRouter.get("/v1/engagements/:id/feed/stream", requireAuth, (req, res) => {
+engagementsRouter.get("/engagements/:id/feed/stream", requireAuth, (req, res) => {
   res.writeHead(501, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -269,6 +269,6 @@ engagementsRouter.get("/v1/engagements/:id/feed/stream", requireAuth, (req, res)
 // ---------- NLQ ----------
 // Resolving a question to structured queries + citations against an LLM
 // is a separate integration this migration doesn't build.
-engagementsRouter.post("/v1/engagements/:id/nlq", requireAuth, (_req, res) => {
+engagementsRouter.post("/engagements/:id/nlq", requireAuth, (_req, res) => {
   res.status(501).json({ error: "nlq resolver not implemented" });
 });

@@ -19,7 +19,7 @@ const switchFirmBody = z.object({ firm_id: z.string().uuid() });
  * firm for the membership check rather than going through withTenant(),
  * which would scope to the token's current (source) firm.
  */
-authRouter.post("/v1/auth/switch-firm", requireAuth, async (req, res, next) => {
+authRouter.post("/auth/switch-firm", requireAuth, async (req, res, next) => {
   try {
     const body = switchFirmBody.parse(req.body);
     const tenant = req.tenant!;

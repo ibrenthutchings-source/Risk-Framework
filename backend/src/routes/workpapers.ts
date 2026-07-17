@@ -14,7 +14,7 @@ const exportBody = z.object({
 });
 
 workpapersRouter.post(
-  "/v1/engagements/:id/workpapers",
+  "/engagements/:id/workpapers",
   withTenant(async (req, res, client) => {
     const engagement = await client.query<{ firm_id: string }>(`SELECT firm_id FROM engagements WHERE id = $1`, [req.params.id]);
     if (!engagement.rowCount) return res.status(404).json({ error: "engagement not found" });
@@ -45,7 +45,7 @@ workpapersRouter.post(
 );
 
 workpapersRouter.get(
-  "/v1/workpapers/:job_id",
+  "/workpapers/:job_id",
   withTenant(async (req, res, client) => {
     const rows = await client.query(
       `SELECT status, download_url, error FROM workpaper_jobs WHERE id = $1`,

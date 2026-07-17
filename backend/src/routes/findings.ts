@@ -14,7 +14,7 @@ const patchFindingBody = z.object({
 
 // Status/severity transitions only — findings are never hard-deleted.
 findingsRouter.patch(
-  "/v1/findings/:id",
+  "/findings/:id",
   withTenant(async (req, res, client) => {
     const body = patchFindingBody.parse(req.body);
     if (!body.status && !body.severity) {
@@ -55,7 +55,7 @@ findingsRouter.patch(
 );
 
 findingsRouter.get(
-  "/v1/findings/:id/evidence",
+  "/findings/:id/evidence",
   withTenant(async (req, res, client) => {
     const rows = await client.query(`SELECT * FROM evidence WHERE finding_id = $1`, [req.params.id]);
     res.json({ data: rows.rows });
@@ -71,7 +71,7 @@ const createEvidenceBody = z.object({
 });
 
 findingsRouter.post(
-  "/v1/findings/:id/evidence",
+  "/findings/:id/evidence",
   withTenant(async (req, res, client) => {
     const finding = await client.query<{ engagement_id: string; firm_id: string }>(
       `SELECT engagement_id, firm_id FROM findings WHERE id = $1`,

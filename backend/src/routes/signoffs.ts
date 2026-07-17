@@ -14,7 +14,7 @@ const decisionBody = z.object({
 
 // Restricted to partner/lead role — per-engagement override still wins if present.
 signoffsRouter.post(
-  "/v1/sign-offs/:id/decision",
+  "/sign-offs/:id/decision",
   withTenant(async (req, res, client) => {
     const existing = await client.query<{ engagement_id: string; firm_id: string }>(
       `SELECT engagement_id, firm_id FROM sign_offs WHERE id = $1`,

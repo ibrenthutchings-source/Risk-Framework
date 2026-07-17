@@ -26,12 +26,23 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-app.use(authRouter);
-app.use(engagementsRouter);
-app.use(findingsRouter);
-app.use(signoffsRouter);
-app.use(queriesRouter);
-app.use(workpapersRouter);
+// Friendly root response — otherwise a bare "/" falls through to the
+// routers below and gets swallowed by their auth middleware, returning a
+// confusing 401 instead of a clean 404/200.
+app.get("/", (_req, res) => {
+  res.json({ service: "chainproof-api", status: "ok", health: "/health" });
+});
+
+// Mounted under /v1 (not bare app.use(router)) so a request that doesn't
+// start with /v1 — like "/" or a stray asset request — never enters these
+// routers at all, instead of hitting their internal requireAuth/.use()
+// middleware and coming back as a misleading 401.
+app.use("/v1", authRouter);
+app.use("/v1", engagementsRouter);
+app.use("/v1", findingsRouter);
+app.use("/v1", signoffsRouter);
+app.use("/v1", queriesRouter);
+app.use("/v1", workpapersRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "not found" });
