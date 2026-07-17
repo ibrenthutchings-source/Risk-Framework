@@ -15,6 +15,7 @@ row-level security on every tenant table).
   4. `firm_id` → `NOT NULL` + FK constraints + indexes
   5. enable RLS (`USING (firm_id = current_setting('app.firm_id', true)::uuid)`)
   6. `workpaper_jobs` table (created tenant-scoped from the start)
+  7. add `users.password_hash` (nullable — see Auth model below)
 - `src/db.ts` — `withTenantTransaction(firmId, fn)` is the only sanctioned way
   to touch a tenant table; it sets `app.firm_id` via `set_config` before `fn` runs.
 - `src/middleware/auth.ts` — verifies the bearer JWT, populates `req.tenant`.
@@ -57,6 +58,28 @@ than one firm's scope at once.
 Role resolution order: `engagement_access.role_override` for that user on
 that engagement (if a row exists and isn't null) → otherwise the firm-wide
 role from `firm_memberships`.
+
+**Getting a first token.** There's no self-service signup — real firm
+onboarding is an invite flow (`firm_memberships.invited_by`), not an open
+endpoint, and that invite flow isn't built yet. To create a user to log in
+with:
+
+```bash
+SEED_EMAIL=you@example.com SEED_PASSWORD='...' SEED_NAME="Your Name" \
+  npm run seed:user
+```
+
+Defaults to the seeded default firm (`00000000-0000-0000-0000-000000000001`)
+with role `partner`; override with `SEED_FIRM_ID` / `SEED_ROLE`. Idempotent —
+re-running updates the password/role rather than erroring. Then:
+
+```bash
+curl -X POST https://<api-host>/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"..."}'
+```
+
+returns `{ token }` — use it as `Authorization: Bearer <token>` on everything else.
 
 ## What's stubbed, honestly
 
