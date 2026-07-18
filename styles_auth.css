@@ -1,0 +1,32 @@
+/* styles_auth.css — login screen + shared loading/error/empty states */
+
+.login-screen{height:100vh;width:100vw;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.login-card{width:360px;max-width:92vw;display:flex;flex-direction:column;gap:14px;padding:32px 28px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.08)}
+.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.login-title{font-size:20px;font-weight:600;margin-top:8px}
+.login-sub{font-size:13px;color:var(--muted);margin-top:-8px}
+.login-field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--muted);font-weight:500}
+.login-field input{height:38px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt);font-size:14px;outline:none;transition:.13s}
+.login-field input:focus{border-color:var(--accent)}
+.login-error{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--crit);background:rgba(220,53,69,.08);border:1px solid rgba(220,53,69,.22);border-radius:8px;padding:9px 11px}
+.login-submit{height:40px;border-radius:9px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;margin-top:4px;transition:.13s}
+.login-submit:hover{filter:brightness(1.08)}
+.login-submit:disabled{opacity:.6;cursor:default}
+.login-hint{font-size:11px;color:var(--dim);line-height:1.5;text-align:center;margin-top:4px}
+.login-hint code{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* ---------- Shared data-loading states ---------- */
+.state-row{display:flex;align-items:center;gap:10px;padding:20px;font-size:13px;color:var(--muted)}
+.state-spinner{width:16px;height:16px;flex:0 0 16px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+.state-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:40px 20px;text-align:center}
+.state-empty-title{font-size:14px;font-weight:600;color:var(--txt)}
+
+/* ---------- User menu / logout ---------- */
+.user-menu{display:flex;align-items:center;gap:10px}
+.user-btn{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel)}
+.user-btn:hover{border-color:var(--line-2);color:var(--txt)}
+
+/* ---------- Create-engagement onboarding form ---------- */
+.onboard-form{display:flex;flex-direction:column;gap:10px;width:320px;max-width:90vw;margin-top:14px;text-align:left}
+.onboard-form input,.onboard-form select{height:34px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--txt);font-size:13px}
+.onboard-form button{height:36px;border-radius:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;margin-top:4px}

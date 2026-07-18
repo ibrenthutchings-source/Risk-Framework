@@ -56,8 +56,15 @@ function PanelHead({ title, sub, right, icon }) {
 }
 
 // ---------- Badges ----------
+const SEVERITY_COLORS = {
+  critical: { label: "Critical", color: "#dc3545" },
+  high: { label: "High", color: "#e8652a" },
+  medium: { label: "Medium", color: "#d9940e" },
+  low: { label: "Low", color: "#1a9d5e" },
+  info: { label: "Informational", color: "#3b82f6" },
+};
 function SevBadge({ sev, children }) {
-  const c = ADATA.SEVERITY[sev] || ADATA.SEVERITY.info;
+  const c = SEVERITY_COLORS[sev] || SEVERITY_COLORS.info;
   return (
     <span className="sev-badge" style={{ color: c.color, background: c.color + "1f", borderColor: c.color + "55" }}>
       <span className="sev-dot" style={{ background: c.color }} />
@@ -81,7 +88,7 @@ function Tag({ children, tone = "neutral" }) {
 function Mono({ children, dim }) { return <span className="mono" style={dim ? { color: "var(--dim)" } : {}}>{children}</span>; }
 function AddrChip({ value, kind = "addr" }) {
   const [copied, setCopied] = useState(false);
-  const short = ADATA.shortAddr(value);
+  const short = value ? value.slice(0, 6) + "…" + value.slice(-4) : "—";
   return (
     <button className="addr-chip" onClick={() => { navigator.clipboard?.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1100); }}>
       <span className="mono">{short}</span>
@@ -148,6 +155,47 @@ function RiskRing({ score, size = 92 }) {
   );
 }
 
+// ---------- Loading / empty / unavailable states (real-data views need these; mocks never did) ----------
+function LoadingPanel({ label = "Loading…" }) {
+  return <Panel><div className="state-row"><span className="state-spinner" /><span className="dim">{label}</span></div></Panel>;
+}
+function ErrorPanel({ error, onRetry }) {
+  return (
+    <Panel>
+      <div className="state-row">
+        <Icon path={ICONS.alert} size={16} />
+        <span>{error?.message || "Something went wrong"}</span>
+        {onRetry && <button className="btn-sm" onClick={onRetry}>Retry</button>}
+      </div>
+    </Panel>
+  );
+}
+function EmptyPanel({ title, sub, action }) {
+  return (
+    <Panel>
+      <div className="state-empty">
+        <div className="state-empty-title">{title}</div>
+        {sub && <div className="dim sm">{sub}</div>}
+        {action}
+      </div>
+    </Panel>
+  );
+}
+// For views the backend genuinely doesn't implement yet (feed streaming, NLQ,
+// counterparty/fund-flow entity modeling) — honest about the gap rather than
+// silently falling back to mock data.
+function UnavailablePanel({ title, reason }) {
+  return (
+    <Panel>
+      <div className="state-empty">
+        <div className="state-empty-title">{title || "Not connected yet"}</div>
+        <div className="dim sm" style={{ maxWidth: 480, textAlign: "center" }}>{reason}</div>
+      </div>
+    </Panel>
+  );
+}
+
 Object.assign(window, {
   Icon, ICONS, Panel, PanelHead, SevBadge, Tag, Mono, AddrChip, Stat, Sparkline, Meter, RiskRing,
+  LoadingPanel, ErrorPanel, EmptyPanel, UnavailablePanel,
 });

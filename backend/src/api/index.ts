@@ -12,6 +12,19 @@ import { workpapersRouter } from "../routes/workpapers";
 const app = express();
 app.use(express.json());
 
+// Hand-rolled rather than the `cors` package — auth here is a Bearer
+// token, not a cookie, so there's no ambient credential for a wildcard
+// origin to leak; CORS is just what lets a browser-hosted frontend call
+// this API cross-origin at all, it isn't doing any of the actual
+// authorization work.
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 // Health check — Railway polls this before routing traffic to a replica.
 // Only reports healthy once both DB and Redis connections are live.
 app.get("/health", async (_req, res) => {

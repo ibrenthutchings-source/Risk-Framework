@@ -10,8 +10,8 @@
 <link rel="stylesheet" href="styles.css" />
 <link rel="stylesheet" href="styles_intel.css" />
 <link rel="stylesheet" href="styles_audit.css" />
-<link rel="stylesheet" href="styles_nlq.css" />
 <link rel="stylesheet" href="styles_export.css" />
+<link rel="stylesheet" href="styles_auth.css" />
 </head>
 <body>
 <div id="root"></div>
@@ -20,17 +20,18 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
-<script type="text/babel" src="data.jsx"></script>
-<script type="text/babel" src="data_intel.jsx"></script>
-<script type="text/babel" src="data_audit.jsx"></script>
-<script type="text/babel" src="data_nlq.jsx"></script>
+<!-- api.jsx must load first: defines apiFetch/useApi/login/logout that every
+     view and the auth screen depend on. data*.jsx / dune_integration.jsx /
+     components_intel.jsx are gone — they backed the mock ADATA layer and
+     the entity/sankey UI, neither of which has a real backend model yet
+     (see backend/README.md "What's stubbed, honestly"). -->
+<script type="text/babel" src="api.jsx"></script>
 <script type="text/babel" src="tweaks-panel.jsx"></script>
 <script type="text/babel" src="components.jsx"></script>
-<script type="text/babel" src="components_intel.jsx"></script>
+<script type="text/babel" src="auth.jsx"></script>
 <script type="text/babel" src="views_core.jsx"></script>
 <script type="text/babel" src="views_analysis.jsx"></script>
 <script type="text/babel" src="views_intel.jsx"></script>
-<script type="text/babel" src="dune_integration.jsx"></script>
 <script type="text/babel" src="views_nlq.jsx"></script>
 <script type="text/babel" src="export_workpaper.jsx"></script>
 <script type="text/babel" src="views_audit.jsx"></script>

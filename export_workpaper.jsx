@@ -1,76 +1,64 @@
-// export_workpaper.jsx — Simulated workpaper export modal
-const { useState: useStateEW, useEffect: useEffectEW, useCallback: useCallbackEW } = React;
+// export_workpaper.jsx — Export workpaper modal, wired to POST /v1/engagements/:id/workpapers
+const { useState: useStateEW, useEffect: useEffectEW, useRef: useRefEW } = React;
 
 const EXPORT_SECTIONS = [
-  { id: "exec", label: "Executive Summary", desc: "Engagement overview, scope & risk posture", size: "~2 pages", required: true },
-  { id: "findings", label: "Findings & Risk Register", desc: "All findings with severity, evidence & remediation", size: "~4 pages", required: true },
-  { id: "assertions", label: "Assertion Coverage Matrix", desc: "Financial-statement assertion testing results", size: "~1 page", required: false },
-  { id: "tokens", label: "Token Existence & Ownership", desc: "Balance reconciliation at block height", size: "~2 pages", required: false },
-  { id: "contracts", label: "Smart Contract Behavior", desc: "Control surface, centralization & privilege analysis", size: "~3 pages", required: false },
-  { id: "counterparty", label: "Counterparty Intelligence", desc: "Entity-resolved exposure & flagged counterparties", size: "~2 pages", required: false },
-  { id: "flow", label: "Fund-Flow Analysis", desc: "Source & use of funds trace documentation", size: "~2 pages", required: false },
-  { id: "tokenomics", label: "Tokenomics → Financial Bridge", desc: "On-chain events mapped to accounting treatment", size: "~3 pages", required: false },
-  { id: "governance", label: "Governance Activity", desc: "Proposals, parameter changes & voting records", size: "~1 page", required: false },
-  { id: "infra", label: "Validators & Custody", desc: "Consensus activity & key custody health", size: "~1 page", required: false },
-  { id: "trail", label: "Audit Trail & Sign-offs", desc: "Activity log, evidence chain & reviewer approvals", size: "~2 pages", required: true },
-];
-
-const EXPORT_STEPS = [
-  { label: "Validating engagement scope", duration: 600 },
-  { label: "Compiling findings & evidence", duration: 800 },
-  { label: "Reconciling on-chain data at block height", duration: 1000 },
-  { label: "Generating assertion coverage matrix", duration: 600 },
-  { label: "Rendering fund-flow diagrams", duration: 700 },
-  { label: "Assembling workpaper document", duration: 800 },
-  { label: "Applying digital signatures", duration: 400 },
-  { label: "Finalizing export", duration: 300 },
+  { id: "findings", label: "Findings & Risk Register", desc: "All findings with severity, evidence & remediation", required: true },
+  { id: "trail", label: "Audit Trail & Sign-offs", desc: "Activity log, evidence chain & reviewer approvals", required: true },
+  { id: "tokens", label: "Token Existence & Ownership", desc: "Balance reconciliation at block height", required: false },
+  { id: "contracts", label: "Smart Contract Behavior", desc: "Control surface, centralization & privilege analysis", required: false },
+  { id: "governance", label: "Governance Activity", desc: "Proposals, parameter changes & voting records", required: false },
+  { id: "tokenomics", label: "Tokenomics → Financial Bridge", desc: "On-chain events mapped to accounting treatment", required: false },
+  { id: "infra", label: "Validators & Custody", desc: "Consensus activity & key custody health", required: false },
 ];
 
 function ExportWorkpaperModal({ client, onClose }) {
-  const [phase, setPhase] = useStateEW("config"); // config | generating | complete
+  const [phase, setPhase] = useStateEW("config"); // config | generating | complete | error
   const [format, setFormat] = useStateEW("pdf");
   const [sections, setSections] = useStateEW(
     EXPORT_SECTIONS.reduce((a, s) => ({ ...a, [s.id]: true }), {})
   );
-  const [step, setStep] = useStateEW(0);
-  const [progress, setProgress] = useStateEW(0);
+  const [job, setJob] = useStateEW(null); // { status, download_url, error }
+  const [errorMsg, setErrorMsg] = useStateEW(null);
+  const pollRef = useRefEW(null);
+
+  useEffectEW(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const toggleSection = (id) => {
-    const sec = EXPORT_SECTIONS.find(s => s.id === id);
+    const sec = EXPORT_SECTIONS.find((s) => s.id === id);
     if (sec.required) return;
-    setSections(prev => ({ ...prev, [id]: !prev[id] }));
+    setSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const selectedCount = Object.values(sections).filter(Boolean).length;
-  const estPages = EXPORT_SECTIONS.filter(s => sections[s.id]).reduce((a, s) => {
-    const n = parseInt(s.size.match(/\d+/)?.[0] || "1");
-    return a + n;
-  }, 0);
 
-  const startExport = useCallbackEW(() => {
+  const startExport = async () => {
     setPhase("generating");
-    setStep(0);
-    setProgress(0);
-
-    let currentStep = 0;
-    const totalSteps = EXPORT_STEPS.length;
-
-    const advance = () => {
-      if (currentStep >= totalSteps) {
-        setPhase("complete");
-        return;
-      }
-      setStep(currentStep);
-      setProgress(((currentStep + 0.5) / totalSteps) * 100);
-
-      setTimeout(() => {
-        currentStep++;
-        setProgress((currentStep / totalSteps) * 100);
-        setTimeout(advance, 150);
-      }, EXPORT_STEPS[currentStep].duration);
-    };
-    advance();
-  }, []);
+    setErrorMsg(null);
+    try {
+      const res = await apiFetch(`/v1/engagements/${client.id}/workpapers`, {
+        method: "POST",
+        body: { sections: EXPORT_SECTIONS.filter((s) => sections[s.id]).map((s) => s.id), format },
+      });
+      const jobId = res.job_id;
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await apiFetch(`/v1/workpapers/${jobId}`);
+          if (status.status === "complete" || status.status === "error") {
+            clearInterval(pollRef.current);
+            setJob(status);
+            setPhase(status.status === "complete" ? "complete" : "error");
+          }
+        } catch (err) {
+          clearInterval(pollRef.current);
+          setErrorMsg(err.message);
+          setPhase("error");
+        }
+      }, 1500);
+    } catch (err) {
+      setErrorMsg(err.message);
+      setPhase("error");
+    }
+  };
 
   const formatOpts = [
     { id: "pdf", label: "PDF", desc: "Print-ready workpaper", icon: "📄" },
@@ -80,8 +68,7 @@ function ExportWorkpaperModal({ client, onClose }) {
 
   return (
     <div className="ew-scrim" onClick={onClose}>
-      <div className="ew-modal" onClick={e => e.stopPropagation()}>
-        {/* Header */}
+      <div className="ew-modal" onClick={(e) => e.stopPropagation()}>
         <div className="ew-header">
           <div className="ew-header-l">
             <div className="ew-header-icon">
@@ -91,19 +78,17 @@ function ExportWorkpaperModal({ client, onClose }) {
             </div>
             <div>
               <div className="ew-title">Export workpaper</div>
-              <div className="ew-subtitle">{client.name} · {client.fy}</div>
+              <div className="ew-subtitle">{client.name} · {client.fiscal_period || "no period set"}</div>
             </div>
           </div>
           <button className="ew-close" onClick={onClose}>✕</button>
         </div>
 
-        {/* Config phase */}
         {phase === "config" && (
           <div className="ew-body">
-            {/* Format selector */}
             <div className="ew-section-label">Output format</div>
             <div className="ew-formats">
-              {formatOpts.map(f => (
+              {formatOpts.map((f) => (
                 <button key={f.id} className={"ew-fmt" + (format === f.id ? " on" : "")} onClick={() => setFormat(f.id)}>
                   <span className="ew-fmt-icon">{f.icon}</span>
                   <div className="ew-fmt-name">{f.label}</div>
@@ -112,10 +97,9 @@ function ExportWorkpaperModal({ client, onClose }) {
               ))}
             </div>
 
-            {/* Section picker */}
             <div className="ew-section-label">Sections to include <span className="ew-section-count">{selectedCount}/{EXPORT_SECTIONS.length}</span></div>
             <div className="ew-sections">
-              {EXPORT_SECTIONS.map(s => (
+              {EXPORT_SECTIONS.map((s) => (
                 <button key={s.id}
                   className={"ew-sec" + (sections[s.id] ? " on" : "") + (s.required ? " req" : "")}
                   onClick={() => toggleSection(s.id)}>
@@ -124,16 +108,14 @@ function ExportWorkpaperModal({ client, onClose }) {
                     <div className="ew-sec-name">{s.label}{s.required && <span className="ew-req">Required</span>}</div>
                     <div className="ew-sec-desc">{s.desc}</div>
                   </div>
-                  <span className="ew-sec-size mono">{s.size}</span>
                 </button>
               ))}
             </div>
 
-            {/* Footer */}
             <div className="ew-config-foot">
               <div className="ew-est">
-                <span className="ew-est-label">Estimated output</span>
-                <span className="ew-est-val mono">~{estPages} pages · {format.toUpperCase()}</span>
+                <span className="ew-est-label">Output</span>
+                <span className="ew-est-val mono">{selectedCount} sections · {format.toUpperCase()}</span>
               </div>
               <div className="ew-foot-btns">
                 <button className="ew-cancel" onClick={onClose}>Cancel</button>
@@ -148,7 +130,6 @@ function ExportWorkpaperModal({ client, onClose }) {
           </div>
         )}
 
-        {/* Generating phase */}
         {phase === "generating" && (
           <div className="ew-body ew-gen">
             <div className="ew-gen-header">
@@ -158,26 +139,20 @@ function ExportWorkpaperModal({ client, onClose }) {
                 <div className="ew-gen-sub">{client.name} · {selectedCount} sections · {format.toUpperCase()}</div>
               </div>
             </div>
+            <div className="dim sm">Queued on the worker (dune-execution style job) — this polls GET /v1/workpapers/:job_id every 1.5s.</div>
+          </div>
+        )}
 
-            <div className="ew-progress-wrap">
-              <div className="ew-progress-bar">
-                <div className="ew-progress-fill" style={{ width: progress + "%" }}></div>
-              </div>
-              <div className="ew-progress-pct mono">{Math.round(progress)}%</div>
-            </div>
-
-            <div className="ew-steps">
-              {EXPORT_STEPS.map((s, i) => (
-                <div key={i} className={"ew-step" + (i < step ? " done" : i === step ? " active" : "")}>
-                  <span className="ew-step-icon">{i < step ? "✓" : i === step ? "●" : "○"}</span>
-                  <span>{s.label}</span>
-                </div>
-              ))}
+        {phase === "error" && (
+          <div className="ew-body ew-done">
+            <div className="login-error" style={{ width: "100%" }}><Icon path={ICONS.alert} size={14} />{errorMsg || job?.error || "Generation failed"}</div>
+            <div className="ew-done-actions" style={{ marginTop: 14 }}>
+              <button className="ew-cancel" onClick={() => setPhase("config")}>Back</button>
+              <button className="ew-cancel" onClick={onClose}>Close</button>
             </div>
           </div>
         )}
 
-        {/* Complete phase */}
         {phase === "complete" && (
           <div className="ew-body ew-done">
             <div className="ew-done-icon">
@@ -187,42 +162,18 @@ function ExportWorkpaperModal({ client, onClose }) {
               </svg>
             </div>
             <div className="ew-done-title">Workpaper ready</div>
-            <div className="ew-done-sub">Your audit workpaper has been generated and is ready for download.</div>
+            <div className="ew-done-sub">Generated by the worker and uploaded to object storage.</div>
 
             <div className="ew-done-file">
-              <div className="ew-file-icon">
-                {format === "pdf" ? "📄" : format === "xlsx" ? "📊" : "📝"}
-              </div>
+              <div className="ew-file-icon">{format === "pdf" ? "📄" : format === "xlsx" ? "📊" : "📝"}</div>
               <div className="ew-file-info">
-                <div className="ew-file-name mono">ChainProof_{client.ticker}_Workpaper_{client.fy.replace(/\s·\s/g, "_")}.{format}</div>
-                <div className="ew-file-meta">
-                  <span>{selectedCount} sections</span>
-                  <span>·</span>
-                  <span>~{estPages} pages</span>
-                  <span>·</span>
-                  <span>{(estPages * 0.18).toFixed(1)} MB</span>
-                  <span>·</span>
-                  <span>Block #{(21847392).toLocaleString()}</span>
-                </div>
+                <div className="ew-file-name mono" style={{ wordBreak: "break-all" }}>{job?.download_url || "—"}</div>
+                <div className="ew-file-meta"><span>{selectedCount} sections</span><span>·</span><span>{format.toUpperCase()}</span></div>
               </div>
-            </div>
-
-            <div className="ew-done-details">
-              <div className="ew-dd-row"><span className="ew-dd-l">Engagement</span><span>{client.name}</span></div>
-              <div className="ew-dd-row"><span className="ew-dd-l">Period</span><span>{client.fy}</span></div>
-              <div className="ew-dd-row"><span className="ew-dd-l">Format</span><span className="mono">{format.toUpperCase()}</span></div>
-              <div className="ew-dd-row"><span className="ew-dd-l">Block height</span><span className="mono">#21,847,392</span></div>
-              <div className="ew-dd-row"><span className="ew-dd-l">Generated</span><span className="mono">{new Date().toISOString().replace("T", " ").slice(0, 19)} UTC</span></div>
-              <div className="ew-dd-row"><span className="ew-dd-l">Signed by</span><span>Sarah Chen (Lead) · David Park (Partner)</span></div>
             </div>
 
             <div className="ew-done-actions">
-              <button className="ew-download">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Download workpaper
-              </button>
+              {job?.download_url && <a className="ew-download" href={job.download_url} target="_blank" rel="noreferrer">Open storage object</a>}
               <button className="ew-cancel" onClick={onClose}>Close</button>
             </div>
           </div>

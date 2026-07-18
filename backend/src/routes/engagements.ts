@@ -26,6 +26,36 @@ engagementsRouter.get(
   })
 );
 
+// Not in the original §3 endpoint list (the doc only specs GET on
+// /engagements) — added because without it there's no way to create the
+// one entity everything else hangs off of. Restricted to partner/firm_admin
+// since standing up a new engagement is an administrative action, not
+// something a staff auditor does day-to-day.
+const createEngagementBody = z.object({
+  name: z.string().min(1),
+  ticker: z.string().optional(),
+  entity_type: z.enum(["defi_lending", "dao_treasury", "l2_infra", "other"]).optional(),
+  fiscal_period: z.string().optional(),
+  chains: z.array(z.string()).optional(),
+});
+
+engagementsRouter.post(
+  "/engagements",
+  withTenant(async (req, res, client) => {
+    if (req.tenant!.role !== "partner" && req.tenant!.role !== "firm_admin") {
+      return res.status(403).json({ error: "requires partner or firm_admin role" });
+    }
+    const body = createEngagementBody.parse(req.body);
+    const inserted = await client.query(
+      `INSERT INTO engagements (firm_id, name, ticker, entity_type, fiscal_period, chains)
+       VALUES (current_setting('app.firm_id')::uuid, $1, $2, $3, $4, $5)
+       RETURNING *`,
+      [body.name, body.ticker ?? null, body.entity_type ?? null, body.fiscal_period ?? null, JSON.stringify(body.chains ?? [])]
+    );
+    res.status(201).json({ data: inserted.rows[0] });
+  })
+);
+
 engagementsRouter.get(
   "/engagements/:id",
   withTenant(async (req, res, client) => {
