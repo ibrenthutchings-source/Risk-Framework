@@ -127,11 +127,68 @@ function timeAgo(ts) {
   return Math.floor(s / 3600) + "h ago";
 }
 
+const CHAINS = ["ethereum", "arbitrum", "polygon", "optimism", "base"];
+
+function TrackWalletForm({ client, onAdded }) {
+  const [address, setAddress] = useStateC("");
+  const [chain, setChain] = useStateC("arbitrum");
+  const [kind, setKind] = useStateC("eoa");
+  const [error, setError] = useStateC(null);
+  const [busy, setBusy] = useStateC(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await apiFetch(`/v1/engagements/${client.id}/wallets`, { method: "POST", body: { address, chain, kind } });
+      setAddress("");
+      onAdded();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="onboard-form"
+      onSubmit={submit}
+      style={{ flexDirection: "row", alignItems: "center", width: "auto", maxWidth: "none", padding: "12px 16px", borderBottom: "1px solid var(--line)", margin: 0 }}
+    >
+      <input placeholder="0x… wallet or contract address" value={address} onChange={(e) => setAddress(e.target.value)} style={{ flex: 1, minWidth: 260 }} />
+      <select value={chain} onChange={(e) => setChain(e.target.value)}>
+        {CHAINS.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <select value={kind} onChange={(e) => setKind(e.target.value)}>
+        <option value="eoa">EOA</option>
+        <option value="multisig">Multisig</option>
+        <option value="contract">Contract</option>
+      </select>
+      <button className="btn-sm" type="submit" disabled={busy || !address}>{busy ? "Adding…" : "Track wallet"}</button>
+      {error && <span className="dim sm" style={{ color: "var(--high)" }}>{error}</span>}
+    </form>
+  );
+}
+
 function LiveFeedView({ client }) {
   const { events, status } = useLiveFeed(client.id);
+  const { data: wallets, reload: reloadWallets } = useApi(`/v1/engagements/${client.id}/wallets`);
 
   return (
     <div className="view">
+      <Panel pad={false} style={{ marginBottom: 14 }}>
+        <PanelHead icon="server" title="Tracked wallets" sub={`${(wallets || []).length} address${(wallets || []).length === 1 ? "" : "es"} on this engagement — only wallets on the chain the worker's RPC endpoint serves will show live activity`} />
+        <TrackWalletForm client={client} onAdded={reloadWallets} />
+        {(wallets || []).length > 0 && (
+          <div style={{ padding: "8px 16px", display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {wallets.map((w) => (
+              <Tag key={w.id} tone="neutral">{w.chain} · <span className="mono">{w.address.slice(0, 6)}…{w.address.slice(-4)}</span></Tag>
+            ))}
+          </div>
+        )}
+      </Panel>
       <Panel pad={false}>
         <PanelHead
           icon="pulse"

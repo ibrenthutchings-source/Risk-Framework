@@ -224,6 +224,48 @@ engagementsRouter.get(
   })
 );
 
+// ---------- Wallets / contracts ----------
+// Not in the original §3 endpoint list (only the derived /cross-chain
+// rollup below was specced) — added because without a way to write
+// wallets_contracts rows, nothing has an address to track: the live feed,
+// cross-chain rollup, and address_id on findings all hang off this table.
+engagementsRouter.get(
+  "/engagements/:id/wallets",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(
+      `SELECT * FROM wallets_contracts WHERE engagement_id = $1 ORDER BY chain, address`,
+      [req.params.id]
+    );
+    res.json({ data: rows.rows });
+  })
+);
+
+const createWalletBody = z.object({
+  address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte address"),
+  chain: z.enum(["ethereum", "arbitrum", "polygon", "optimism", "base"]),
+  kind: z.enum(["eoa", "multisig", "contract"]),
+  label: z.string().optional(),
+  role: z.enum(["treasury", "ops", "deployer", "admin", "custody"]).optional(),
+});
+
+engagementsRouter.post(
+  "/engagements/:id/wallets",
+  withTenant(async (req, res, client) => {
+    const engagementId = req.params.id;
+    const role = await resolveEngagementRole(client, req.tenant!, engagementId);
+    if (role === "client_viewer") return res.status(403).json({ error: "read-only role" });
+
+    const body = createWalletBody.parse(req.body);
+    const inserted = await client.query(
+      `INSERT INTO wallets_contracts (engagement_id, address, chain, kind, label, role)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING *`,
+      [engagementId, body.address.toLowerCase(), body.chain, body.kind, body.label ?? null, body.role ?? null]
+    );
+    res.status(201).json({ data: inserted.rows[0] });
+  })
+);
+
 // Not a modeled table (no dedicated cross-chain-balance entity in §2) —
 // derived from wallets_contracts grouped by chain. Reconciliation deltas
 // need an on-chain balance feed this schema doesn't wire up yet.
