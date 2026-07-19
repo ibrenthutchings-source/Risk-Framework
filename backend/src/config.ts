@@ -18,6 +18,9 @@ export const config = {
   rpc: {
     url: process.env.RPC_PROVIDER_URL || "",
     apiKey: process.env.RPC_API_KEY || "",
+    // Which wallets_contracts.chain value this single RPC endpoint serves —
+    // block-sync-polling only tracks wallets on this chain.
+    chain: process.env.RPC_CHAIN || "",
   },
   storage: {
     accessKeyId: process.env.S3_ACCESS_KEY_ID || "",

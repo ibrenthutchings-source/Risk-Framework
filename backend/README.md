@@ -16,6 +16,7 @@ row-level security on every tenant table).
   5. enable RLS (`USING (firm_id = current_setting('app.firm_id', true)::uuid)`)
   6. `workpaper_jobs` table (created tenant-scoped from the start)
   7. add `users.password_hash` (nullable — see Auth model below)
+  8. `feed_events` (live feed, tenant-scoped) + `chain_sync_state` (poller cursor, not tenant data)
 - `src/db.ts` — `withTenantTransaction(firmId, fn)` is the only sanctioned way
   to touch a tenant table; it sets `app.firm_id` via `set_config` before `fn` runs.
 - `src/middleware/auth.ts` — verifies the bearer JWT, populates `req.tenant`.
@@ -81,15 +82,32 @@ curl -X POST https://<api-host>/v1/auth/login \
 
 returns `{ token }` — use it as `Authorization: Bearer <token>` on everything else.
 
+## Live feed
+
+`block-sync-polling` (worker, every 15s) polls the single configured RPC
+endpoint (`RPC_PROVIDER_URL`, tagged with which `wallets_contracts.chain`
+value it serves via `RPC_CHAIN` — this backend doesn't multiplex multiple
+RPC endpoints per chain) for new blocks via `eth_getBlockByNumber`, matches
+transactions against every firm's tracked wallets, and writes a row to
+`feed_events` for each match — capped at `MAX_BLOCKS_PER_TICK` (25) blocks
+per tick so a gap since the last tick can't turn into an unbounded
+catch-up burst. Cold start baselines at the chain tip rather than
+backfilling history. Each insert is published to Redis channel
+`feed:<engagementId>`.
+
+`GET /v1/engagements/:id/feed/stream` relays that as SSE: the last 50
+`feed_events` rows as a `backlog` message on connect, then live `tx`
+messages as they're published. Severity is a naive value-threshold
+heuristic over real on-chain amounts (not behavioral/counterparty-risk
+scoring) — see `severityFor` in `blockSyncPolling.ts`.
+
 ## What's stubbed, honestly
 
-- `GET /v1/engagements/:id/feed/stream` — returns 501. Needs an RPC
-  subscription relayed through the worker; not built here.
 - `POST /v1/engagements/:id/nlq` — returns 501. Needs an LLM integration;
   not built here.
-- `block-sync-polling` / `alert-rule-evaluation` processors — correct
-  tenant-scoped iteration pattern, condition/anomaly evaluation itself is
-  a `TODO` pending the live feed table.
+- `alert-rule-evaluation` processor — correct tenant-scoped iteration
+  pattern; evaluating `alert_rules.condition` against `feed_events` is a
+  `TODO`, so alert rules can be created but never fire yet.
 - `workpaper-generation` — produces a JSON snapshot of the requested
   sections and uploads it to S3-compatible storage; real PDF/XLSX
   rendering is a follow-up.

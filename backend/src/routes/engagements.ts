@@ -1,8 +1,12 @@
 import { Router } from "express";
+import IORedis from "ioredis";
 import { z } from "zod";
+import { config } from "../config";
+import { withTenantTransaction } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { withTenant, resolveEngagementRole } from "../middleware/tenantContext";
 import { appendAuditEvent, verifyAuditChain } from "../auditTrail";
+import { feedChannel } from "../realtime";
 
 export const engagementsRouter = Router();
 engagementsRouter.use(requireAuth);
@@ -282,18 +286,55 @@ engagementsRouter.get(
 );
 
 // ---------- Live feed (SSE) ----------
-// Real-time tx streaming needs the worker's RPC subscription wired to a
-// pub/sub channel this handler relays — that infra isn't built here.
-// This proves the endpoint shape (headers, connection lifecycle) without
-// faking chain data.
-engagementsRouter.get("/engagements/:id/feed/stream", requireAuth, (req, res) => {
-  res.writeHead(501, {
+// block-sync-polling (worker) writes feed_events and publishes each new row
+// to Redis channel feed:<engagementId>; this relays that as SSE. Sends the
+// last 50 events as a `backlog` message on connect, then live `tx` messages
+// as they're published. EventSource can't carry an Authorization header, so
+// the frontend reads this with fetch + a ReadableStream reader instead of
+// the native EventSource API — same Bearer-token auth as every other route.
+engagementsRouter.get("/engagements/:id/feed/stream", async (req, res) => {
+  const engagementId = req.params.id;
+  const firmId = req.tenant!.firmId;
+
+  let backlog: unknown[] | null;
+  try {
+    backlog = await withTenantTransaction(firmId, async (client) => {
+      const eng = await client.query(`SELECT id FROM engagements WHERE id = $1`, [engagementId]);
+      if (!eng.rowCount) return null;
+      const rows = await client.query(
+        `SELECT id, chain, block_number, tx_hash, from_address, to_address, value_wei, direction, is_new_counterparty, severity, detected_at
+         FROM feed_events WHERE engagement_id = $1 ORDER BY detected_at DESC LIMIT 50`,
+        [engagementId]
+      );
+      return rows.rows.reverse();
+    });
+  } catch {
+    return res.status(500).json({ error: "failed to load feed backlog" });
+  }
+  if (backlog === null) return res.status(404).json({ error: "engagement not found" });
+
+  res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
   });
-  res.write(`event: error\ndata: ${JSON.stringify({ error: "feed streaming not implemented — needs worker RPC subscription" })}\n\n`);
-  res.end();
+  res.write(`event: backlog\ndata: ${JSON.stringify(backlog)}\n\n`);
+
+  // Dedicated connection: ioredis puts a client in subscribe-only mode once
+  // SUBSCRIBE is called, so this can't share the app's shared Redis client.
+  const subscriber = new IORedis(config.redisUrl);
+  await subscriber.subscribe(feedChannel(engagementId));
+  subscriber.on("message", (_channel, message) => {
+    res.write(`event: tx\ndata: ${message}\n\n`);
+  });
+
+  const heartbeat = setInterval(() => res.write(`: ping\n\n`), 20_000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    subscriber.disconnect();
+  });
 });
 
 // ---------- NLQ ----------

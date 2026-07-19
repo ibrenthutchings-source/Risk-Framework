@@ -109,14 +109,73 @@ function OverviewView({ client }) {
   );
 }
 
-// ============ LIVE FEED — not implemented server-side ============
+// ============ LIVE FEED ============
+// Backed by GET /v1/engagements/:id/feed/stream (SSE): a backlog on
+// connect, then live pushes as block-sync-polling matches new transactions
+// against this engagement's wallets_contracts rows.
+function shortHash(v) { return v ? v.slice(0, 8) + "…" + v.slice(-6) : "—"; }
+function weiToEth(w) {
+  try {
+    const n = Number(BigInt(w) / 10n ** 10n) / 1e8; // 8 sig figs of precision, avoids float overflow on large wei
+    return n;
+  } catch { return 0; }
+}
+function timeAgo(ts) {
+  const s = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 1000));
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  return Math.floor(s / 3600) + "h ago";
+}
+
 function LiveFeedView({ client }) {
+  const { events, status } = useLiveFeed(client.id);
+
   return (
     <div className="view">
-      <UnavailablePanel
-        title="Live feed isn't connected yet"
-        reason={`GET /v1/engagements/${client.id}/feed/stream returns 501 — it needs an RPC subscription relayed through the worker, which isn't built. See backend/README.md for what's stubbed.`}
-      />
+      <Panel pad={false}>
+        <PanelHead
+          icon="pulse"
+          title="Real-time transaction feed"
+          sub="Transactions touching this engagement's tracked wallets, as blocks land"
+          right={
+            <div className="live-dot-row">
+              {status === "open" && <><span className="live-dot" /><span className="dim sm">Live</span></>}
+              {status === "connecting" && <span className="dim sm">Connecting…</span>}
+              {status === "closed" && <span className="dim sm">Disconnected</span>}
+              {status === "error" && <span className="dim sm" style={{ color: "var(--high)" }}>Connection error</span>}
+            </div>
+          }
+        />
+        {events.length === 0 ? (
+          <EmptyPanel
+            title={status === "open" ? "No transactions yet" : status === "error" ? "Couldn't connect to the feed" : "Waiting for the first event…"}
+            sub="New transactions touching a tracked wallet appear here as they're detected — nothing to backfill on a fresh engagement."
+          />
+        ) : (
+          <div className="feed-table">
+            <div className="feed-th">
+              <div>Block</div><div>Tx</div><div>Direction</div><div>Flow</div><div>Value</div><div>Detected</div>
+            </div>
+            <div className="feed-body">
+              {events.map((e) => (
+                <div className={"feed-tr" + (e.is_new_counterparty ? " anom" : "")} key={e.id}>
+                  <div className="mono dim">{e.block_number}</div>
+                  <div><AddrChip value={e.tx_hash} /></div>
+                  <div><Tag tone={e.direction === "out" ? "warn" : "ok"}>{e.direction === "out" ? "Outbound" : "Inbound"}</Tag></div>
+                  <div className="feed-flow">
+                    <AddrChip value={e.from_address} />
+                    <Icon path={ICONS.arrow} size={12} />
+                    {e.to_address ? <AddrChip value={e.to_address} /> : <span className="dim">contract creation</span>}
+                  </div>
+                  <div className="mono">{weiToEth(e.value_wei).toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH</div>
+                  <div className="feed-usd"><SevBadge sev={e.severity} /> <span style={{ marginLeft: 6 }}>{timeAgo(e.detected_at)}</span></div>
+                  {e.is_new_counterparty && <div className="feed-reason">First transaction with this counterparty</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

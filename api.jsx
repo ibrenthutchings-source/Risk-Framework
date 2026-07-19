@@ -3,7 +3,7 @@
 // staging/local (e.g. ?api=https://api-staging-staging-0da5.up.railway.app).
 const API_BASE = (() => {
   const qp = new URLSearchParams(window.location.search).get("api");
-  return qp || "https://risk-framework-production.up.railway.app";
+  return (qp || "https://risk-framework-production.up.railway.app").replace(/\/+$/, "");
 })();
 
 const TOKEN_KEY = "chainproof_token";
@@ -66,4 +66,63 @@ function useApi(path) {
   return { ...state, reload: () => setTick((t) => t + 1) };
 }
 
-Object.assign(window, { API_BASE, apiFetch, ApiError, login, logout, getToken, setToken, useApi });
+// SSE reader for GET /v1/engagements/:id/feed/stream. Native EventSource
+// can't send an Authorization header, so this reads the stream manually via
+// fetch + a ReadableStream reader and parses `event:`/`data:` frames itself
+// — same Bearer-token auth as every other call, no token-in-URL workaround.
+function useLiveFeed(engagementId) {
+  const [events, setEvents] = React.useState([]);
+  const [status, setStatus] = React.useState("connecting"); // connecting | open | error
+
+  React.useEffect(() => {
+    if (!engagementId) return;
+    let cancelled = false;
+    let reader = null;
+    setStatus("connecting");
+    setEvents([]);
+
+    (async () => {
+      try {
+        const token = getToken();
+        const res = await fetch(`${API_BASE}/v1/engagements/${engagementId}/feed/stream`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok || !res.body) { if (!cancelled) setStatus("error"); return; }
+        if (cancelled) return;
+        setStatus("open");
+
+        reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (!cancelled) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const frames = buf.split("\n\n");
+          buf = frames.pop();
+          for (const frame of frames) {
+            let event = "message", data = "";
+            for (const line of frame.split("\n")) {
+              if (line.startsWith("event:")) event = line.slice(6).trim();
+              else if (line.startsWith("data:")) data += line.slice(5).trim();
+            }
+            if (!data) continue;
+            let parsed;
+            try { parsed = JSON.parse(data); } catch { continue; }
+            if (event === "backlog") setEvents(parsed);
+            else if (event === "tx") setEvents((prev) => [parsed, ...prev].slice(0, 200));
+          }
+        }
+        if (!cancelled) setStatus("closed");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    })();
+
+    return () => { cancelled = true; if (reader) reader.cancel().catch(() => {}); };
+  }, [engagementId]);
+
+  return { events, status };
+}
+
+Object.assign(window, { API_BASE, apiFetch, ApiError, login, logout, getToken, setToken, useApi, useLiveFeed });
