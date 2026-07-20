@@ -46,6 +46,10 @@ app.get("/", (_req, res) => {
   res.json({ service: "chainproof-api", status: "ok", health: "/health" });
 });
 
+// Browsers auto-request this on every page load; silence the harmless
+// console 404 it'd otherwise produce on an API with no static assets.
+app.get("/favicon.ico", (_req, res) => res.sendStatus(204));
+
 // Mounted under /v1 (not bare app.use(router)) so a request that doesn't
 // start with /v1 — like "/" or a stray asset request — never enters these
 // routers at all, instead of hitting their internal requireAuth/.use()
