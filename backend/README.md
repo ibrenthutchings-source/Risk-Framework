@@ -101,6 +101,18 @@ messages as they're published. Severity is a naive value-threshold
 heuristic over real on-chain amounts (not behavioral/counterparty-risk
 scoring) — see `severityFor` in `blockSyncPolling.ts`.
 
+## Counterparty intelligence
+
+`counterparty_labels` is manually-curated address → name/category/risk_tier
+intel, scoped per engagement (`POST /v1/engagements/:id/counterparties`,
+restricted like other write routes). `GET /v1/engagements/:id/counterparties`
+doesn't just return that table — it derives the counterparty list by
+grouping `feed_events` by the "other side" of each transaction (real
+on-chain activity from tracked wallets), then left-joins the label. So an
+address shows up here as soon as a tracked wallet has actually transacted
+with it, labeled or not; there's no separate "add a counterparty" step
+disconnected from real activity.
+
 ## What's stubbed, honestly
 
 - `POST /v1/engagements/:id/nlq` — returns 501. Needs an LLM integration;

@@ -327,6 +327,84 @@ engagementsRouter.get(
   })
 );
 
+// ---------- Counterparty intelligence ----------
+// Not modeled from mock data (the prototype's ENTITY_TYPES/ENTITIES were
+// pure fixtures) — counterparty_labels is real manually-curated intel,
+// joined against real feed_events activity computed at query time. An
+// address only shows up here once a tracked wallet has actually
+// transacted with it; the label itself is optional (defaults to
+// "unknown"/"low" so unlabeled counterparties still show their exposure).
+engagementsRouter.get(
+  "/engagements/:id/counterparties",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(
+      `WITH cp AS (
+         SELECT
+           chain,
+           CASE WHEN direction = 'out' THEN to_address ELSE from_address END AS address,
+           direction,
+           value_wei,
+           detected_at
+         FROM feed_events
+         WHERE engagement_id = $1
+       )
+       SELECT
+         cp.chain,
+         cp.address,
+         l.id AS label_id,
+         l.name,
+         COALESCE(l.category, 'unknown') AS category,
+         COALESCE(l.risk_tier, 'low') AS risk_tier,
+         l.note,
+         count(*)::int AS tx_count,
+         count(*) FILTER (WHERE cp.direction = 'in')::int AS in_count,
+         count(*) FILTER (WHERE cp.direction = 'out')::int AS out_count,
+         sum(cp.value_wei) AS total_value_wei,
+         min(cp.detected_at) AS first_seen,
+         max(cp.detected_at) AS last_seen
+       FROM cp
+       LEFT JOIN counterparty_labels l
+         ON l.engagement_id = $1 AND l.chain = cp.chain AND l.address = cp.address
+       WHERE cp.address IS NOT NULL
+       GROUP BY cp.chain, cp.address, l.id, l.name, l.category, l.risk_tier, l.note
+       ORDER BY tx_count DESC`,
+      [req.params.id]
+    );
+    res.json({ data: rows.rows });
+  })
+);
+
+const upsertCounterpartyLabelBody = z.object({
+  chain: z.enum(["ethereum", "arbitrum", "polygon", "optimism", "base"]),
+  address: z.string().min(1),
+  name: z.string().optional(),
+  category: z.enum(["exchange", "bridge", "mixer", "market_maker", "protocol", "sanctioned", "unknown"]).default("unknown"),
+  risk_tier: z.enum(["low", "medium", "high", "critical"]).default("low"),
+  note: z.string().optional(),
+});
+
+engagementsRouter.post(
+  "/engagements/:id/counterparties",
+  withTenant(async (req, res, client) => {
+    const engagementId = req.params.id;
+    const role = await resolveEngagementRole(client, req.tenant!, engagementId);
+    if (role === "client_viewer") return res.status(403).json({ error: "read-only role" });
+
+    const body = upsertCounterpartyLabelBody.parse(req.body);
+    const address = body.address.toLowerCase();
+    const inserted = await client.query(
+      `INSERT INTO counterparty_labels (firm_id, engagement_id, chain, address, name, category, risk_tier, note)
+       VALUES (current_setting('app.firm_id')::uuid, $1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (engagement_id, chain, address) DO UPDATE
+         SET name = EXCLUDED.name, category = EXCLUDED.category, risk_tier = EXCLUDED.risk_tier,
+             note = EXCLUDED.note, updated_at = now()
+       RETURNING *`,
+      [engagementId, body.chain, address, body.name ?? null, body.category, body.risk_tier, body.note ?? null]
+    );
+    res.status(201).json({ data: inserted.rows[0] });
+  })
+);
+
 // ---------- Live feed (SSE) ----------
 // block-sync-polling (worker) writes feed_events and publishes each new row
 // to Redis channel feed:<engagementId>; this relays that as SSE. Sends the

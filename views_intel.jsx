@@ -1,14 +1,140 @@
 // views_intel.jsx — Counterparty Intel, Fund-Flow Trace, Audit Queries, Alerts
 const { useState: useStateV2, useEffect: useEffectV2, useRef: useRefV2 } = React;
 
-// ============ COUNTERPARTY INTELLIGENCE — not modeled server-side ============
+// ============ COUNTERPARTY INTELLIGENCE ============
+// Backed by counterparty_labels (manually-curated name/category/risk_tier)
+// joined against real feed_events activity at query time — an address only
+// shows up once a tracked wallet (Live Feed) has actually transacted with
+// it. Labels are optional; unlabeled counterparties still show exposure.
+const CATEGORY_LABELS = {
+  exchange: "Exchange", bridge: "Bridge", mixer: "Mixer", market_maker: "Market Maker",
+  protocol: "Protocol", sanctioned: "Sanctioned", unknown: "Unlabeled",
+};
+
+function CounterpartyLabelForm({ client, cp, onSaved, onCancel }) {
+  const [name, setName] = useStateV2(cp.name || "");
+  const [category, setCategory] = useStateV2(cp.category || "unknown");
+  const [riskTier, setRiskTier] = useStateV2(cp.risk_tier || "low");
+  const [note, setNote] = useStateV2(cp.note || "");
+  const [busy, setBusy] = useStateV2(false);
+  const [error, setError] = useStateV2(null);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/v1/engagements/${client.id}/counterparties`, {
+        method: "POST",
+        body: { chain: cp.chain, address: cp.address, name: name || undefined, category, risk_tier: riskTier, note: note || undefined },
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="onboard-form"
+      onSubmit={save}
+      onClick={(e) => e.stopPropagation()}
+      style={{ flexDirection: "row", flexWrap: "wrap", width: "auto", maxWidth: "none", padding: "12px 16px", background: "var(--bg)", borderBottom: "1px solid var(--line)" }}
+    >
+      <input placeholder="Label (e.g. Binance Hot Wallet)" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+      <select value={category} onChange={(e) => setCategory(e.target.value)}>
+        {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </select>
+      <select value={riskTier} onChange={(e) => setRiskTier(e.target.value)}>
+        <option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option><option value="critical">Critical risk</option>
+      </select>
+      <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+      <button className="btn-sm" type="submit" disabled={busy}>{busy ? "Saving…" : "Save label"}</button>
+      <button type="button" className="btn-sm" onClick={onCancel}>Cancel</button>
+      {error && <span className="dim sm" style={{ color: "var(--high)" }}>{error}</span>}
+    </form>
+  );
+}
+
 function CounterpartyView({ client }) {
+  const { data: cps, loading, error, reload } = useApi(`/v1/engagements/${client.id}/counterparties`);
+  const [editing, setEditing] = useStateV2(null);
+
+  if (loading) return <div className="view"><LoadingPanel label="Loading counterparty exposure…" /></div>;
+  if (error) return <div className="view"><ErrorPanel error={error} onRetry={reload} /></div>;
+
+  const list = cps || [];
+  if (list.length === 0) {
+    return (
+      <div className="view">
+        <EmptyPanel
+          title="No counterparty activity yet"
+          sub="Counterparties appear here once a tracked wallet transacts with them — add one under Live Feed first."
+        />
+      </div>
+    );
+  }
+
+  const flagged = list.filter((c) => c.risk_tier === "high" || c.risk_tier === "critical" || c.category === "sanctioned");
+  const unlabeled = list.filter((c) => !c.name).length;
+  const totalTx = list.reduce((s, c) => s + c.tx_count, 0);
+  const keyOf = (c) => c.chain + ":" + c.address;
+
   return (
     <div className="view">
-      <UnavailablePanel
-        title="Counterparty intelligence isn't connected"
-        reason="There's no entity-labeling table in the backend schema (no equivalent of the prototype's ENTITY_TYPES/ENTITIES mock). Wiring this up means designing and building that data model first, not just pointing at an existing endpoint."
-      />
+      <div className="grid-4">
+        <Panel><Stat label="Counterparties" value={list.length} sub="distinct addresses transacted with" /></Panel>
+        <Panel><Stat label="Flagged" value={flagged.length} tone={flagged.length ? "#dc3545" : undefined} sub="high/critical risk or sanctioned" /></Panel>
+        <Panel><Stat label="Unlabeled" value={unlabeled} sub="no intel recorded yet" /></Panel>
+        <Panel><Stat label="Transactions" value={totalTx} sub="across tracked wallets" /></Panel>
+      </div>
+
+      {flagged.length > 0 && (
+        <Panel pad={false} style={{ marginTop: 14 }}>
+          <PanelHead icon="alert" title="Flagged exposures" sub="High/critical risk or sanctioned counterparties" />
+          <div className="flag-exp">
+            {flagged.map((c) => (
+              <div className="flag-card" key={keyOf(c)}>
+                <div className="flag-top">
+                  <span className="flag-name">{c.name || "Unlabeled"}</span>
+                  <Tag tone="bad">{CATEGORY_LABELS[c.category]}</Tag>
+                </div>
+                {c.note && <div className="flag-note">{c.note}</div>}
+                <div className="flag-addr mono">{c.chain} · {c.address}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      <Panel pad={false} style={{ marginTop: 14 }}>
+        <PanelHead icon="search" title="Counterparty exposure" sub={`${list.length} addresses, derived from live feed activity`} />
+        <div className="ent-table">
+          <div className="ent-th"><div>Entity</div><div>Category</div><div>Chain</div><div>Risk</div><div>Txns</div><div>Volume</div><div>Detail</div></div>
+          {list.map((c) => (
+            <React.Fragment key={keyOf(c)}>
+              <div className="ent-tr" onClick={() => setEditing(editing === keyOf(c) ? null : keyOf(c))}>
+                <div className="ent-cell-name">
+                  <span className={"ent-label" + (c.risk_tier === "high" || c.risk_tier === "critical" ? " risky" : !c.name ? " unlabeled" : "")}>
+                    <span className="ent-name">{c.name || (c.address.slice(0, 6) + "…" + c.address.slice(-4))}</span>
+                  </span>
+                </div>
+                <div><Tag tone={c.category === "sanctioned" ? "bad" : "neutral"}>{CATEGORY_LABELS[c.category]}</Tag></div>
+                <div className="dim">{c.chain}</div>
+                <div><Tag tone={c.risk_tier === "critical" || c.risk_tier === "high" ? "bad" : c.risk_tier === "medium" ? "warn" : "ok"}>{c.risk_tier}</Tag></div>
+                <div className="mono">{c.tx_count} <span className="dim sm">({c.in_count} in / {c.out_count} out)</span></div>
+                <div className="mono">{weiToEth(c.total_value_wei).toLocaleString(undefined, { maximumFractionDigits: 3 })} ETH</div>
+                <div className="dim sm">{editing === keyOf(c) ? "Close ↑" : "Edit label →"}</div>
+              </div>
+              {editing === keyOf(c) && (
+                <CounterpartyLabelForm client={client} cp={c} onSaved={() => { setEditing(null); reload(); }} onCancel={() => setEditing(null)} />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </Panel>
     </div>
   );
 }
