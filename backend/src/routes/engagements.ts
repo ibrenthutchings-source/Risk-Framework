@@ -257,8 +257,8 @@ engagementsRouter.post(
 
     const body = createWalletBody.parse(req.body);
     const inserted = await client.query(
-      `INSERT INTO wallets_contracts (engagement_id, address, chain, kind, label, role)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO wallets_contracts (engagement_id, firm_id, address, chain, kind, label, role)
+       VALUES ($1, current_setting('app.firm_id')::uuid, $2,$3,$4,$5,$6)
        RETURNING *`,
       [engagementId, body.address.toLowerCase(), body.chain, body.kind, body.label ?? null, body.role ?? null]
     );
