@@ -1,0 +1,26 @@
+# Static frontend service, separate from backend/Dockerfile.api and
+# .worker. Only COPYs the specific files a browser needs — backend
+# source, .git, and debug.log never enter this image.
+FROM node:20-alpine
+WORKDIR /app
+COPY serve-frontend.js ./
+COPY "Blockchain Audit System.html" ./
+COPY api.jsx ./
+COPY tweaks-panel.jsx ./
+COPY components.jsx ./
+COPY auth.jsx ./
+COPY views_core.jsx ./
+COPY views_analysis.jsx ./
+COPY views_intel.jsx ./
+COPY views_nlq.jsx ./
+COPY export_workpaper.jsx ./
+COPY views_audit.jsx ./
+COPY app.jsx ./
+COPY styles.css ./
+COPY styles_intel.css ./
+COPY styles_audit.css ./
+COPY styles_export.css ./
+COPY styles_auth.css ./
+
+EXPOSE 8080
+CMD ["node", "serve-frontend.js"]
