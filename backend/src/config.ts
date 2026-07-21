@@ -22,6 +22,12 @@ export const config = {
     // block-sync-polling only tracks wallets on this chain.
     chain: process.env.RPC_CHAIN || "",
   },
+  llm: {
+    // Empty until set — NLQ checks this and returns 501 rather than a
+    // fabricated answer when no key is configured.
+    apiKey: process.env.ANTHROPIC_API_KEY || "",
+    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
+  },
   storage: {
     accessKeyId: process.env.S3_ACCESS_KEY_ID || "",
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",

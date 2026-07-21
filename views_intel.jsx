@@ -139,14 +139,101 @@ function CounterpartyView({ client }) {
   );
 }
 
-// ============ FUND-FLOW TRACE — not modeled server-side ============
+// ============ FUND-FLOW TRACE ============
+// Per-wallet in/out flow derived from feed_events (same source as
+// Counterparty Intel). Not a multi-hop trace through untracked third
+// parties — we only observe activity where one side is a tracked wallet,
+// so this is the honest depth a real trace can go without an external
+// indexer or transitively expanding what gets tracked.
 function FundFlowView({ client }) {
+  const { data: rows, loading, error, reload } = useApi(`/v1/engagements/${client.id}/fund-flow`);
+
+  if (loading) return <div className="view"><LoadingPanel label="Loading fund flow…" /></div>;
+  if (error) return <div className="view"><ErrorPanel error={error} onRetry={reload} /></div>;
+
+  const list = rows || [];
+  if (list.length === 0) {
+    return (
+      <div className="view">
+        <EmptyPanel title="No flow activity yet" sub="Fund flow is derived from Live Feed activity — track a wallet under Live Feed and wait for transactions first." />
+      </div>
+    );
+  }
+
+  const byWallet = {};
+  for (const r of list) {
+    const w = (byWallet[r.wallet_id] = byWallet[r.wallet_id] || { wallet_id: r.wallet_id, address: r.wallet_address, chain: r.chain, label: r.label, in: [], out: [] });
+    w[r.direction].push(r);
+  }
+  const wallets = Object.values(byWallet);
+  const sumWei = (arr) => arr.reduce((s, r) => s + BigInt(r.total_value_wei || "0"), 0n);
+  const fmt = (bi) => weiToEth(bi.toString()).toLocaleString(undefined, { maximumFractionDigits: 3 });
+
   return (
     <div className="view">
-      <UnavailablePanel
-        title="Fund-flow tracing isn't connected"
-        reason="Same gap as counterparty intel — there's no fund-flow graph table or trace computation on the backend. The prototype's Sankey view was pure mock data."
-      />
+      <Panel pad={false} style={{ marginBottom: 14 }}>
+        <PanelHead icon="flow" title="Fund-flow trace" sub="Per-wallet in/out flow derived from Live Feed activity" />
+        <div style={{ padding: "10px 16px" }} className="dim sm">
+          Scoped to tracked wallets — reflects direct activity only, not a multi-hop trace through untracked third parties.
+        </div>
+      </Panel>
+
+      {wallets.map((w) => {
+        const totalIn = sumWei(w.in);
+        const totalOut = sumWei(w.out);
+        const net = totalIn - totalOut;
+        const topIn = [...w.in].sort((a, b) => b.tx_count - a.tx_count).slice(0, 6);
+        const topOut = [...w.out].sort((a, b) => b.tx_count - a.tx_count).slice(0, 6);
+        return (
+          <Panel pad={false} key={w.wallet_id} style={{ marginBottom: 14 }}>
+            <div className="ff-focus">
+              <div className="ff-focus-head">
+                <AddrChip value={w.address} />
+                <span className="ff-focus-name">{w.label || (w.address.slice(0, 6) + "…" + w.address.slice(-4))}</span>
+                <Tag>{w.chain}</Tag>
+              </div>
+              <div className="ff-iostats">
+                <div className="ff-iostat"><div className="ds-label">Inbound</div><div className="ff-io-val">{fmt(totalIn)} ETH</div></div>
+                <div className="ff-iostat"><div className="ds-label">Outbound</div><div className="ff-io-val">{fmt(totalOut)} ETH</div></div>
+                <div className="ff-iostat">
+                  <div className="ds-label">Net</div>
+                  <div className="ff-io-val" style={{ color: net >= 0n ? "var(--low)" : "var(--high)" }}>{net >= 0n ? "+" : ""}{fmt(net)} ETH</div>
+                </div>
+              </div>
+
+              {topIn.length > 0 && (
+                <>
+                  <div className="ff-io-sec"><Icon path={ICONS.arrow} size={12} /> Top inbound counterparties</div>
+                  <div className="ff-io-list">
+                    {topIn.map((r) => (
+                      <div className="ff-io-row" key={"in-" + r.counterparty}>
+                        <AddrChip value={r.counterparty} />
+                        <span className="dim sm">{r.tx_count} txns</span>
+                        <span className="ff-io-amt mono">{weiToEth(r.total_value_wei).toLocaleString(undefined, { maximumFractionDigits: 3 })} ETH</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {topOut.length > 0 && (
+                <>
+                  <div className="ff-io-sec"><Icon path={ICONS.arrow} size={12} /> Top outbound counterparties</div>
+                  <div className="ff-io-list">
+                    {topOut.map((r) => (
+                      <div className="ff-io-row" key={"out-" + r.counterparty}>
+                        <AddrChip value={r.counterparty} />
+                        <span className="dim sm">{r.tx_count} txns</span>
+                        <span className="ff-io-amt mono">{weiToEth(r.total_value_wei).toLocaleString(undefined, { maximumFractionDigits: 3 })} ETH</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </Panel>
+        );
+      })}
     </div>
   );
 }

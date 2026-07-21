@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { withTenant, resolveEngagementRole } from "../middleware/tenantContext";
 import { appendAuditEvent, verifyAuditChain } from "../auditTrail";
 import { feedChannel } from "../realtime";
+import { answerNlq } from "../nlq";
 
 export const engagementsRouter = Router();
 engagementsRouter.use(requireAuth);
@@ -457,9 +458,53 @@ engagementsRouter.get("/engagements/:id/feed/stream", async (req, res) => {
   });
 });
 
+// ---------- Fund-flow trace ----------
+// Not a full multi-hop trace across arbitrary third parties — that would
+// need tracking every counterparty transitively, which isn't built. This
+// is the real per-wallet in/out flow derived from feed_events (the same
+// underlying data as counterparty intel), which is as far as an honest
+// trace goes given what's actually tracked.
+engagementsRouter.get(
+  "/engagements/:id/fund-flow",
+  withTenant(async (req, res, client) => {
+    const rows = await client.query(
+      `SELECT
+         w.id AS wallet_id, w.address AS wallet_address, w.chain, w.label,
+         fe.direction,
+         CASE WHEN fe.direction = 'out' THEN fe.to_address ELSE fe.from_address END AS counterparty,
+         count(*)::int AS tx_count,
+         sum(fe.value_wei) AS total_value_wei
+       FROM feed_events fe
+       JOIN wallets_contracts w ON w.id = fe.wallet_id
+       WHERE fe.engagement_id = $1
+       GROUP BY w.id, w.address, w.chain, w.label, fe.direction, counterparty
+       ORDER BY w.id, total_value_wei DESC`,
+      [req.params.id]
+    );
+    res.json({ data: rows.rows });
+  })
+);
+
 // ---------- NLQ ----------
-// Resolving a question to structured queries + citations against an LLM
-// is a separate integration this migration doesn't build.
-engagementsRouter.post("/engagements/:id/nlq", requireAuth, (_req, res) => {
-  res.status(501).json({ error: "nlq resolver not implemented" });
-});
+// Grounded in this engagement's real data (see src/nlq.ts) — returns 501
+// rather than a fabricated answer if ANTHROPIC_API_KEY isn't configured.
+const nlqBody = z.object({ question: z.string().min(1) });
+
+engagementsRouter.post(
+  "/engagements/:id/nlq",
+  withTenant(async (req, res, client) => {
+    if (!config.llm.apiKey) {
+      return res.status(501).json({ error: "nlq resolver not configured — set ANTHROPIC_API_KEY to enable it" });
+    }
+    const body = nlqBody.parse(req.body);
+    const eng = await client.query(`SELECT id FROM engagements WHERE id = $1`, [req.params.id]);
+    if (!eng.rowCount) return res.status(404).json({ error: "engagement not found" });
+
+    try {
+      const result = await answerNlq(client, req.params.id, body.question);
+      res.json({ data: result });
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message });
+    }
+  })
+);

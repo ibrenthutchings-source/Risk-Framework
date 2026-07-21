@@ -113,10 +113,32 @@ address shows up here as soon as a tracked wallet has actually transacted
 with it, labeled or not; there's no separate "add a counterparty" step
 disconnected from real activity.
 
+## Fund-flow trace
+
+`GET /v1/engagements/:id/fund-flow` groups `feed_events` by tracked wallet
+and counterparty, giving real in/out flow per wallet. It is **not** a
+multi-hop trace through untracked third parties — the poller only records
+activity where one side is a tracked `wallets_contracts` row, so a
+counterparty's own onward transactions aren't visible unless that address
+is also separately tracked. Treat this as "confirmed direct flow," not a
+full fund-flow graph.
+
+## AI query (NLQ)
+
+`POST /v1/engagements/:id/nlq` (`src/nlq.ts`) grounds a real Claude API
+call in this engagement's actual data — a bounded sample of findings,
+`feed_events`, counterparty exposure, token holdings, and contract
+profiles is sent as the model's *only* source of truth, with instructions
+to say so rather than invent facts if the data's insufficient. The model
+is asked to return `{answer, citations}` as JSON; citations reference real
+row ids/tx hashes/addresses from the data it was given.
+
+Requires `ANTHROPIC_API_KEY` (optionally `ANTHROPIC_MODEL`, default
+`claude-sonnet-5`) on the API service — without it, returns 501 rather
+than a fabricated answer.
+
 ## What's stubbed, honestly
 
-- `POST /v1/engagements/:id/nlq` — returns 501. Needs an LLM integration;
-  not built here.
 - `alert-rule-evaluation` processor — correct tenant-scoped iteration
   pattern; evaluating `alert_rules.condition` against `feed_events` is a
   `TODO`, so alert rules can be created but never fire yet.
